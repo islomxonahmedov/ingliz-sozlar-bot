@@ -1,0 +1,23 @@
+# Node.js asosiy ignore qoidalari
+
+# .env — maxfiy ma'lumotlar (masalan, tokenlar)
+.env
+
+# Telegram bot session fayli
+session.json
+
+# Node modules — yuklanadigan kutubxonalar
+node_modules/
+
+# OS tizim fayllari
+.DS_Store
+Thumbs.db
+
+# npm log fayllari
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Render yoki boshqa host fayllari
+build/
+dist/
