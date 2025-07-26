@@ -1,105 +1,73 @@
-const { Telegraf } = require('telegraf');
-const fs = require('fs');
-const LocalSession = require('telegraf-session-local');
+const express = require("express");
+const TelegramBot = require("node-telegram-bot-api");
+const mongoose = require("mongoose");
+require("dotenv").config();
 
-const bot = new Telegraf('7973884067:AAGRAFB-6OD98SpckpTUccXaK4vwpyr3fj4');
+const app = express();
+const port = process.env.PORT || 3000;
+const botToken = process.env.BOT_TOKEN;
+const mongoUri = process.env.MONGO_URI;
 
-// Sessiya o‘rnatish
-bot.use(new LocalSession({ database: 'session.json' }).middleware());
+// MongoDB ulanishi
+mongoose.connect(mongoUri, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log("MongoDB ulandi ✅"))
+.catch((err) => console.error("MongoDB ulanishda xatolik ❌", err));
 
-bot.start((ctx) => ctx.reply('Salom! Soʻz yuboring: develop - rivojlantirmoq'));
-bot.help((ctx) => ctx.reply('Yangi soʻz: word - tarjima\nTekshirish: /quiz'));
+// Telegram bot
+const bot = new TelegramBot(botToken, { polling: true });
 
-// So‘zni qo‘shish
-bot.on('text', async (ctx, next) => {
-  const msg = ctx.message.text;
-
-  if (msg === '/quiz') {
-    // So‘zlar bazasidan o‘qiladi
-    const data = fs.readFileSync('data.json', 'utf-8');
-    const words = JSON.parse(data);
-
-    if (words.length === 0) {
-      return ctx.reply('❌ Hozircha soʻz yoʻq.');
-    }
-
-    // Tasodifiy so‘z tanlash
-    const randomWord = words[Math.floor(Math.random() * words.length)];
-
-    // Sessiyada saqlaymiz
-    ctx.session.currentWord = randomWord;
-
-    return ctx.reply(`Inglizcha so‘z: *${randomWord.english}*\nTarjimasini yozing:`, {
-      parse_mode: 'Markdown',
-    });
-  }
-
-  // Tekshirish rejimi
-  if (ctx.session.currentWord) {
-    const userAnswer = msg.trim().toLowerCase();
-    const correct = ctx.session.currentWord.uzbek.toLowerCase();
-
-    if (userAnswer === correct) {
-      ctx.reply('✅ To‘g‘ri!');
-    } else {
-      ctx.reply(`❌ Noto‘g‘ri. To‘g‘risi: ${ctx.session.currentWord.uzbek}`);
-    }
-
-    // Sessiyani tozalaymiz
-    ctx.session.currentWord = null;
-    return;
-  }
-
-  // Yangi so‘z qo‘shish
-  if (msg.includes('-')) {
-    const [english, uzbek] = msg.split('-').map(t => t.trim());
-
-    if (!english || !uzbek) {
-      return ctx.reply('❌ Format noto‘g‘ri. To‘g‘risi: word - tarjima');
-    }
-
-    let words = [];
-    try {
-      words = JSON.parse(fs.readFileSync('data.json', 'utf-8'));
-    } catch (e) {}
-
-    words.push({ english, uzbek });
-
-    fs.writeFileSync('data.json', JSON.stringify(words, null, 2));
-    return ctx.reply(`✅ Saqlandi:\n${english} - ${uzbek}`);
-  }
-
-  next();
+// Schemani yaratamiz (oddiy misol)
+const WordSchema = new mongoose.Schema({
+  english: String,
+  uzbek: String,
 });
 
-bot.launch();
-console.log('Bot ishga tushdi...');
+const Word = mongoose.model("Word", WordSchema);
 
-// /next buyrug‘i — ketma-ket test
-bot.command('next', async (ctx) => {
-    const data = fs.readFileSync('data.json', 'utf-8');
-    const words = JSON.parse(data);
-  
-    if (words.length === 0) return ctx.reply('❌ Hozircha soʻz yoʻq.');
-  
-    const randomWord = words[Math.floor(Math.random() * words.length)];
-    ctx.session.currentWord = randomWord;
-  
-    return ctx.reply(`❓ Tarjimasini yozing:\n👉 *${randomWord.english}*`, {
-      parse_mode: 'Markdown',
+// /start komandasi
+bot.onText(/\/start/, async (msg) => {
+  const chatId = msg.chat.id;
+  await bot.sendMessage(chatId, "Assalomu alaykum! Inglizcha so'zlar botiga xush kelibsiz.");
+});
+
+// /add so'z qo‘shish komandasi
+bot.onText(/\/add (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const text = match[1];
+
+  const [english, uzbek] = text.split(" - ");
+  if (!english || !uzbek) {
+    return bot.sendMessage(chatId, "Iltimos, so‘zni quyidagicha yuboring:\n`/add apple - olma`", {
+      parse_mode: "Markdown",
     });
-  });
-  
-  // /list buyrug‘i — barcha so‘zlar ro‘yxati
-  bot.command('list', (ctx) => {
-    try {
-      const data = fs.readFileSync('data.json', 'utf-8');
-      const words = JSON.parse(data);
-      if (words.length === 0) return ctx.reply('📂 So‘zlar roʻyxati boʻsh');
-  
-      const list = words.map((w, i) => `${i + 1}. ${w.english} - ${w.uzbek}`).join('\n');
-      ctx.reply(`📚 Barcha so‘zlar:\n\n${list}`);
-    } catch (e) {
-      ctx.reply('❌ Xatolik yuz berdi.');
-    }
-  });
+  }
+
+  const word = new Word({ english, uzbek });
+  await word.save();
+  await bot.sendMessage(chatId, `✅ So'z saqlandi: ${english} - ${uzbek}`);
+});
+
+// /all barcha so‘zlarni ko‘rsatish
+bot.onText(/\/all/, async (msg) => {
+  const chatId = msg.chat.id;
+  const words = await Word.find();
+
+  if (words.length === 0) {
+    return bot.sendMessage(chatId, "📭 Hech qanday so‘z topilmadi.");
+  }
+
+  const formatted = words.map(w => `🔹 ${w.english} - ${w.uzbek}`).join("\n");
+  await bot.sendMessage(chatId, formatted);
+});
+
+// Serverni ishga tushuramiz (Render uchun kerak)
+app.get("/", (req, res) => {
+  res.send("Bot ishga tushdi 🚀");
+});
+
+app.listen(port, () => {
+  console.log(`Server ${port}-portda ishlayapti...`);
+});
