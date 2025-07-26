@@ -1,0 +1,17 @@
+{
+  "name": "ingliz-sozlar-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "telegraf-session-local": "^2.1.1"
+  }
+}
